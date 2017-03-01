@@ -12,9 +12,12 @@ import (
 
 var addr = flag.String("addr", "localhost:8080", "http service address")
 
-var upgrader = websocket.Upgrader{} // use default options
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
 
 func echo(w http.ResponseWriter, r *http.Request) {
+	var upgrader = websocket.Upgrader{}
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Print("upgrade:", err)

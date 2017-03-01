@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -14,7 +15,28 @@ import (
 var addr = flag.String("addr", "localhost:8080", "http service address")
 var addr_client = flag.String("addr_client", "localhost:8000", "http service address")
 
-var upgrader = websocket.Upgrader{} // use default options
+var count = 0
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+} // use default options
+
+func send(w http.ResponseWriter, r *http.Request) {
+	u := url.URL{Scheme: "ws", Host: *addr, Path: "/echo"}
+	log.Printf("connecting to %s", u.String())
+
+	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		log.Fatal("dial:", err)
+	}
+	defer c.Close()
+	err = c.WriteMessage(websocket.TextMessage, []byte("test "+string(count)))
+	if err != nil {
+		log.Println("write:", err)
+	}
+	count++
+	fmt.Fprintf(w, "test %d", count)
+}
 
 func echo(w http.ResponseWriter, r *http.Request) {
 	u := url.URL{Scheme: "ws", Host: *addr, Path: "/echo"}
@@ -67,6 +89,7 @@ func main() {
 	log.SetFlags(0)
 	http.HandleFunc("/echo", echo)
 	http.HandleFunc("/", home)
+	http.HandleFunc("/send", send)
 	log.Fatal(http.ListenAndServe(*addr_client, nil))
 	/*
 		flag.Parse()
