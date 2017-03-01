@@ -1,38 +1,50 @@
 package main
 
-import "net"
-import "fmt"
-import "bufio"
-import "log"
-import "strings" // only needed below for sample processing
+import (
+	"flag"
+	"html/template"
+	"log"
+	"net/http"
+	"strings"
 
+	"github.com/gorilla/websocket"
+)
+
+var addr = flag.String("addr", "localhost:8080", "http service address")
+
+var upgrader = websocket.Upgrader{} // use default options
+
+func echo(w http.ResponseWriter, r *http.Request) {
+	c, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Print("upgrade:", err)
+		return
+	}
+	defer c.Close()
+	for {
+		mt, message, err := c.ReadMessage()
+		if err != nil {
+			log.Println("read:", err)
+			break
+		}
+		log.Printf("recv: %s", message)
+		err = c.WriteMessage(mt, []byte(strings.ToUpper(string(message))))
+		if err != nil {
+			log.Println("write:", err)
+			break
+		}
+	}
+}
+
+func home(w http.ResponseWriter, r *http.Request) {
+	t, _ := template.ParseFiles("server.html")
+	t.Execute(w, "ws://"+r.Host+"/echo")
+}
 
 func main() {
-
-  fmt.Println("Launching server...")
-
-  // listen on all interfaces
-  ln, err := net.Listen("tcp", ":8081")
-  if err != nil {
-     log.Fatal(err)
-  }
-  // accept connection on port
-  conn, err := ln.Accept()
-  if err != nil {
-     log.Fatal(err)
-  }
-  // run loop forever (or until ctrl-c)
-  for {
-    // will listen for message to process ending in newline (\n)
-    message, err := bufio.NewReader(conn).ReadString('\n')
-    if err != nil {
-       log.Fatal(err)
-    }      
-    // output message received
-    fmt.Print("Message Received:", string(message))
-    // sample process for string received
-    newmessage := strings.ToUpper(message)
-    // send new string back to client
-    conn.Write([]byte(newmessage + "\n"))
-  }
+	flag.Parse()
+	log.SetFlags(0)
+	http.HandleFunc("/echo", echo)
+	http.HandleFunc("/", home)
+	log.Fatal(http.ListenAndServe(*addr, nil))
 }
