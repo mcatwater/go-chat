@@ -7,7 +7,11 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"os/signal"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -21,60 +25,72 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 } // use default options
 
-func send(w http.ResponseWriter, r *http.Request) {
-	u := url.URL{Scheme: "ws", Host: *addr, Path: "/echo"}
-	log.Printf("connecting to %s", u.String())
+const (
+	// Time allowed to write a message to the peer.
+	writeWait = 10 * time.Second
 
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-	if err != nil {
-		log.Fatal("dial:", err)
-	}
-	defer c.Close()
-	err = c.WriteMessage(websocket.TextMessage, []byte("test "+string(count)))
-	if err != nil {
-		log.Println("write:", err)
-	}
-	count++
-	fmt.Fprintf(w, "test %d", count)
-}
+	// Time allowed to read the next pong message from the peer.
+	pongWait = 60 * time.Second
 
-func echo(w http.ResponseWriter, r *http.Request) {
-	u := url.URL{Scheme: "ws", Host: *addr, Path: "/echo"}
-	log.Printf("connecting to %s", u.String())
+	// Send pings to peer with this period. Must be less than pongWait.
+	pingPeriod = (pongWait * 9) / 10
 
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-	if err != nil {
-		log.Fatal("dial:", err)
-	}
-	defer c.Close()
+	// Maximum message size allowed from peer.
+	maxMessageSize = 512
+)
 
-	//	done := make(chan struct{})
-	/*
-		go func() {
-			defer c.Close()
-			defer close(done)
-			for {
-				_, message, err := c.ReadMessage()
-				if err != nil {
-					log.Println("read:", err)
-					return
-				}
-				log.Printf("recv: %s", message)
-			}
-		}()
-	*/
-	for {
-		mt, message, err := c.ReadMessage()
-		if err != nil {
-			log.Println("read:", err)
-			break
-		}
-		log.Printf("recv: %s", message)
-		//		err = c.WriteMessage(mt, message)
-		err = c.WriteMessage(mt, []byte(strings.ToUpper(string(message))))
+var (
+	newline = []byte{'\n'}
+	space   = []byte{' '}
+)
+
+func send(c *websocket.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		count++
+		message := "test " + strconv.Itoa(count)
+		err := c.WriteMessage(websocket.TextMessage, []byte(message))
 		if err != nil {
 			log.Println("write:", err)
-			break
+		}
+		fmt.Fprintf(w, "test %d", count)
+	}
+}
+
+func echo(c *websocket.Conn) http.HandlerFunc {
+
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		//	defer c.Close()
+
+		//	done := make(chan struct{})
+		/*
+			go func() {
+				defer c.Close()
+				defer close(done)
+				for {
+					_, message, err := c.ReadMessage()
+					if err != nil {
+						log.Println("read:", err)
+						return
+					}
+					log.Printf("recv: %s", message)
+				}
+			}()
+		*/
+		for {
+			mt, message, err := c.ReadMessage()
+			if err != nil {
+				log.Println("read:", err)
+				break
+			}
+			log.Printf("recv: %s", message)
+			//		err = c.WriteMessage(mt, message)
+			err = c.WriteMessage(mt, []byte(strings.ToUpper(string(message))))
+			if err != nil {
+				log.Println("write:", err)
+				break
+			}
 		}
 	}
 }
@@ -84,71 +100,85 @@ func home(w http.ResponseWriter, r *http.Request) {
 	t.Execute(w, "ws://"+*addr+"/echo")
 }
 
-func main() {
-	flag.Parse()
-	log.SetFlags(0)
-	http.HandleFunc("/echo", echo)
-	http.HandleFunc("/", home)
-	http.HandleFunc("/send", send)
-	log.Fatal(http.ListenAndServe(*addr_client, nil))
-	/*
-		flag.Parse()
-		log.SetFlags(0)
+func ping_pong(c *websocket.Conn) {
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt)
 
-		interrupt := make(chan os.Signal, 1)
-		signal.Notify(interrupt, os.Interrupt)
+	done := make(chan struct{})
 
-		u := url.URL{Scheme: "ws", Host: *addr, Path: "/echo"}
-		log.Printf("connecting to %s", u.String())
-
-		c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-		if err != nil {
-			log.Fatal("dial:", err)
-		}
+	go func() {
 		defer c.Close()
-
-		done := make(chan struct{})
-
-		go func() {
-			defer c.Close()
-			defer close(done)
-			for {
-				_, message, err := c.ReadMessage()
-				if err != nil {
-					log.Println("read:", err)
-					return
-				}
-				log.Printf("recv: %s", message)
-			}
-		}()
-
+		defer close(done)
 		for {
-			select {
-			case <-interrupt:
-				log.Println("interrupt")
-				// To cleanly close a connection, a client should send a close
-				// frame and wait for the server to close the connection.
-				err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-				if err != nil {
-					log.Println("write close:", err)
-					return
-				}
-				select {
-				case <-done:
-				case <-time.After(time.Second):
-				}
-				c.Close()
+			_, message, err := c.ReadMessage()
+			if err != nil {
+				log.Println("read:", err)
 				return
-			default:
-				reader := bufio.NewReader(os.Stdin)
-				fmt.Print("Text to send: ")
-				text, _ := reader.ReadString('\n')
-				err := c.WriteMessage(websocket.TextMessage, []byte(text))
+			}
+			log.Printf("recv: %s", message)
+		}
+	}()
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case t := <-ticker.C:
+			log.Println(t.String())
+			if c != nil {
+				err := c.WriteMessage(websocket.TextMessage, []byte(t.String()))
 				if err != nil {
 					log.Println("write:", err)
 					return
 				}
+			} else {
+				log.Println("danger danger" + t.String())
 			}
+
+		case <-interrupt:
+			log.Println("interrupt")
+			// To cleanly close a connection, a client should send a close
+			// frame and wait for the server to close the connection.
+			err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+			if err != nil {
+				log.Println("write close:", err)
+				return
+			}
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+			}
+			c.Close()
+			return
 		}
-	*/
+	}
+
+}
+
+func main() {
+	flag.Parse()
+	log.SetFlags(0)
+
+	u := url.URL{Scheme: "ws", Host: *addr, Path: "/echo"}
+	log.Printf("connecting to %s", u.String())
+
+	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		log.Fatal("dial:", err)
+	}
+
+	err_err := c.WriteMessage(websocket.TextMessage, []byte("danger danger"))
+	if err_err != nil {
+		log.Fatal(err_err)
+	}
+	go ping_pong(c)
+
+	defer c.Close()
+
+	http.HandleFunc("/echo", echo(c))
+	http.HandleFunc("/", home)
+	http.HandleFunc("/send", send(c))
+	log.Fatal(http.ListenAndServe(*addr_client, nil))
+
 }
