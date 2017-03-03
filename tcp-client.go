@@ -51,6 +51,12 @@ func send(c *websocket.Conn) http.HandlerFunc {
 		if err != nil {
 			log.Println("write:", err)
 		}
+		_, msg, err := c.ReadMessage()
+		if err != nil {
+			log.Println("read:", err)
+		}
+		log.Printf("recv: %s", msg)
+
 		fmt.Fprintf(w, "test %d", count)
 	}
 }
@@ -66,7 +72,6 @@ func echo(c *websocket.Conn) http.HandlerFunc {
 				break
 			}
 			log.Printf("recv: %s", message)
-			//		err = c.WriteMessage(mt, message)
 			err = c.WriteMessage(mt, []byte(strings.ToUpper(string(message))))
 			if err != nil {
 				log.Println("write:", err)
