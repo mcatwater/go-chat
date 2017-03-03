@@ -7,8 +7,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
-	"os/signal"
 	"strconv"
 	"strings"
 	"time"
@@ -60,25 +58,8 @@ func send(c *websocket.Conn) http.HandlerFunc {
 func echo(c *websocket.Conn) http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
-
-		//	defer c.Close()
-
-		//	done := make(chan struct{})
-		/*
-			go func() {
-				defer c.Close()
-				defer close(done)
-				for {
-					_, message, err := c.ReadMessage()
-					if err != nil {
-						log.Println("read:", err)
-						return
-					}
-					log.Printf("recv: %s", message)
-				}
-			}()
-		*/
 		for {
+			log.Println("forever loop3")
 			mt, message, err := c.ReadMessage()
 			if err != nil {
 				log.Println("read:", err)
@@ -100,62 +81,6 @@ func home(w http.ResponseWriter, r *http.Request) {
 	t.Execute(w, "ws://"+*addr+"/echo")
 }
 
-func ping_pong(c *websocket.Conn) {
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
-
-	done := make(chan struct{})
-
-	go func() {
-		defer c.Close()
-		defer close(done)
-		for {
-			_, message, err := c.ReadMessage()
-			if err != nil {
-				log.Println("read:", err)
-				return
-			}
-			log.Printf("recv: %s", message)
-		}
-	}()
-
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case t := <-ticker.C:
-			log.Println(t.String())
-			if c != nil {
-				err := c.WriteMessage(websocket.TextMessage, []byte(t.String()))
-				if err != nil {
-					log.Println("write:", err)
-					return
-				}
-			} else {
-				log.Println("danger danger" + t.String())
-			}
-
-		case <-interrupt:
-			log.Println("interrupt")
-			// To cleanly close a connection, a client should send a close
-			// frame and wait for the server to close the connection.
-			err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-			if err != nil {
-				log.Println("write close:", err)
-				return
-			}
-			select {
-			case <-done:
-			case <-time.After(time.Second):
-			}
-			c.Close()
-			return
-		}
-	}
-
-}
-
 func main() {
 	flag.Parse()
 	log.SetFlags(0)
@@ -168,17 +93,10 @@ func main() {
 		log.Fatal("dial:", err)
 	}
 
-	err_err := c.WriteMessage(websocket.TextMessage, []byte("danger danger"))
-	if err_err != nil {
-		log.Fatal(err_err)
-	}
-	go ping_pong(c)
-
 	defer c.Close()
 
 	http.HandleFunc("/echo", echo(c))
 	http.HandleFunc("/", home)
 	http.HandleFunc("/send", send(c))
 	log.Fatal(http.ListenAndServe(*addr_client, nil))
-
 }
