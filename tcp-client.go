@@ -7,9 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -23,30 +21,11 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 } // use default options
 
-const (
-	// Time allowed to write a message to the peer.
-	writeWait = 10 * time.Second
-
-	// Time allowed to read the next pong message from the peer.
-	pongWait = 60 * time.Second
-
-	// Send pings to peer with this period. Must be less than pongWait.
-	pingPeriod = (pongWait * 9) / 10
-
-	// Maximum message size allowed from peer.
-	maxMessageSize = 512
-)
-
-var (
-	newline = []byte{'\n'}
-	space   = []byte{' '}
-)
-
 func send(c *websocket.Conn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-
-		count++
-		message := "test " + strconv.Itoa(count)
+		r.ParseForm()
+		log.Println(r.FormValue("msg"))
+		message := r.FormValue("msg")
 		err := c.WriteMessage(websocket.TextMessage, []byte(message))
 		if err != nil {
 			log.Println("write:", err)
@@ -57,7 +36,7 @@ func send(c *websocket.Conn) http.HandlerFunc {
 		}
 		log.Printf("recv: %s", msg)
 
-		fmt.Fprintf(w, "test %d", count)
+		fmt.Fprintf(w, message)
 	}
 }
 

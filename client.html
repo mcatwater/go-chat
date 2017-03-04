@@ -5,17 +5,18 @@
     <script>
     
 $( document ).ready(function() {
-$( "#send" ).on( "click", function() {
+    $( "#send" ).on( "click", function() {
     $.ajax({
+	type: 'POST',
 	url: "/send",
 	data: {
-	    msg: 97201
+	    msg: $("#input").val(),
 	},
 	success: function( result ) {
+	    console.log("success")
 	    $( "#test" ).html( "<strong>" + result + "</strong>" );
 	}
     });
-    console.log( "You clicked a paragraph!" );
 });
 });
   </script>
@@ -27,12 +28,12 @@ $( "#send" ).on( "click", function() {
 	  "Send" to send a message to the server and "Close" to close the connection. 
 	  You can change the message and send multiple times.
 	<p>
-	  <form>
 	    <button id="open">Open</button>
-	    <button id="close">Close</button>
-	    <p><input id="input" type="text" value="Hello world!">
+    <button id="close">Close</button>
+    <form id="form">
+    <p><input id="input" type="text" value="Hello world!">
+    </form>
 	      <button id="send">Send</button>
-	  </form>
       </td><td valign="top" width="50%">
     <div id="output"></div>
     <div id="test"></div>
