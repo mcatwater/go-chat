@@ -17,7 +17,7 @@ var upgrader = websocket.Upgrader{
 }
 
 func echo(w http.ResponseWriter, r *http.Request) {
-	var upgrader = websocket.Upgrader{}
+	//	var upgrader = websocket.Upgrader{}
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Print("upgrade:", err)

@@ -61,7 +61,7 @@ func echo(c *websocket.Conn) http.HandlerFunc {
 }
 
 func home(w http.ResponseWriter, r *http.Request) {
-	t, _ := template.ParseFiles("client.html")
+	t, _ := template.ParseFiles("client2.html")
 	t.Execute(w, "ws://"+*addr+"/echo")
 }
 
