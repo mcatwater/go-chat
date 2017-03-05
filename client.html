@@ -3,21 +3,24 @@
     <meta charset="utf-8">
     <script src="https://code.jquery.com/jquery-3.1.1.min.js"></script> 
     <script>
-    
+    var exampleSocket = new WebSocket("ws://localhost:8080/echo");
+
+exampleSocket.onopen = function (event) {
+    exampleSocket.send("Here's some text that the server is urgently awaiting!"); 
+};
+
+exampleSocket.onmessage = function (event) {
+    console.log(event.data);
+    	    $( "#test" ).append( "<p>Received: <strong>" + event.data + "</strong>" );
+}
+
+
 $( document ).ready(function() {
     $( "#send" ).on( "click", function() {
-    $.ajax({
-	type: 'POST',
-	url: "/send",
-	data: {
-	    msg: $("#input").val(),
-	},
-	success: function( result ) {
-	    console.log("success")
-	    $( "#test" ).html( "<strong>" + result + "</strong>" );
-	}
+	exampleSocket.send($("#input").val());
+	$( "#test" ).append( "<p>Sent: <strong>" + $("#input").val() + "</strong>" );
+	$("#input").val("");
     });
-});
 });
   </script>
 </head>
