@@ -7,21 +7,24 @@
 
 exampleSocket.onmessage = function (event) {
     console.log(event.data);
-    	    $( "#test" ).append( "<p><strong>" + event.data + "</strong>" );
+    $( "#test" ).append( "<p><strong>" + event.data + "</strong>" );
 }
+
 
 
 $( document ).ready(function() {
     $( "#send" ).on( "click", function() {
-	payload = JSON.stringify({
-	    Id: $("#username").val(),
-	    Type: "message",
-	    To: $("#recipient").val(),
-	    Message: $("#input").val()
-	})
-	exampleSocket.send(payload);
-	$( "#test" ).append( "<p>" + $("#username").val() + ": <strong>" + $("#input").val() + "</strong>" );
-	$("#input").val("");
+	if(exampleSocket.readyState === exampleSocket.OPEN) {
+	    payload = JSON.stringify({
+		Id: $("#username").val(),
+		Type: "message",
+		To: $("#recipient").val(),
+		Message: $("#input").val()
+	    })
+	    exampleSocket.send(payload);
+	    $( "#test" ).append( "<p>" + $("#username").val() + ": <strong>" + $("#input").val() + "</strong>" );
+	    $("#input").val("");
+	};
     });
     $( "#register" ).on( "click", function() {
 	payload = JSON.stringify({
@@ -33,13 +36,36 @@ $( document ).ready(function() {
 	exampleSocket.send(payload);
     });
     $( "#login" ).on( "click", function() {
-	payload = JSON.stringify({
-	    Id: $("#username").val(),
-	    Type: "login",
-	    To: "",
-	    Message: $("#password").val(),
-	})
-	exampleSocket.send(payload);
+	if(exampleSocket.readyState === exampleSocket.OPEN) {
+	    payload = JSON.stringify({
+		Id: $("#username").val(),
+		Type: "login",
+		To: "",
+		Message: $("#password").val(),
+	    })
+	    exampleSocket.send(payload);
+	}
+	else {
+	    exampleSocket = new WebSocket("ws://localhost:8080/");
+	    
+	    exampleSocket.onmessage = function (event) {
+		console.log(event.data);
+		$( "#test" ).append( "<p><strong>" + event.data + "</strong>" );
+	    }
+	};
+    });
+
+    $( "#logout" ).on( "click", function() {
+	if(exampleSocket.readyState === exampleSocket.OPEN) {
+	    payload = JSON.stringify({
+		Id: $("#username").val(),
+		Type: "logout",
+		To: "",
+		Message: "",
+	    })
+	    exampleSocket.send(payload);
+	    exampleSocket.close();
+	};
     });
     
 });

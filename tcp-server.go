@@ -1,9 +1,15 @@
 package main
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"flag"
+	"io"
 	"log"
 	"net/http"
 
@@ -32,15 +38,11 @@ var upgrader = websocket.Upgrader{
 
 var connections = make(map[string]*connection)
 
+var db *sql.DB
+
+var key = []byte("a very very very very secret key") // 32 bytes
+
 func login(u string, p string, ws *websocket.Conn) {
-
-	db, err := sql.Open("mysql",
-		"root@tcp(127.0.0.1:3306)/users")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer db.Close()
 
 	var (
 		id       int
@@ -79,13 +81,6 @@ func login(u string, p string, ws *websocket.Conn) {
 
 func register(u string, p string, ws *websocket.Conn) {
 
-	db, err := sql.Open("mysql",
-		"root@tcp(127.0.0.1:3306)/users")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer db.Close()
 	stmt, err := db.Prepare("insert into users (username, password) values (?,?);")
 	if err != nil {
 		log.Fatal(err)
@@ -112,6 +107,41 @@ func register(u string, p string, ws *websocket.Conn) {
 	err = ws.WriteMessage(websocket.TextMessage, []byte("Login Successful"))
 }
 
+func send(m Message, c *websocket.Conn) error {
+	if _, ok := connections[m.Id]; ok {
+		if conn, ok := connections[m.To]; ok {
+			err := conn.ws.WriteMessage(websocket.TextMessage, []byte(m.Id+": "+m.Message))
+			ciphertext, err := encrypt(key, []byte(m.Message))
+			if err != nil {
+				log.Fatal(err)
+			}
+			stmt, err := db.Prepare("insert into logs (to_user, from_user, message) values (?,?,?);")
+			if err != nil {
+				log.Fatal(err)
+			}
+			res, err := stmt.Exec(m.Id, m.To, ciphertext)
+			if err != nil {
+				log.Fatal(err)
+			}
+			lastId, err := res.LastInsertId()
+			if err != nil {
+				log.Fatal(err)
+			}
+			rowCnt, err := res.RowsAffected()
+			if err != nil {
+				log.Fatal(err)
+			}
+			log.Printf("ID = %d, affected = %d\n", lastId, rowCnt)
+			return err
+		} else {
+			c.WriteMessage(websocket.TextMessage, []byte("User is not logged in"))
+		}
+	} else {
+		c.WriteMessage(websocket.TextMessage, []byte("Please login first"))
+	}
+	return nil
+}
+
 func home(w http.ResponseWriter, r *http.Request) {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -120,7 +150,7 @@ func home(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for {
-		mt, message, err := c.ReadMessage()
+		_, message, err := c.ReadMessage()
 		if err != nil {
 			log.Println("read:", err)
 			break
@@ -135,16 +165,18 @@ func home(w http.ResponseWriter, r *http.Request) {
 			login(m.Id, m.Message, c)
 		case "message":
 			log.Println("message")
-
-			if conn, ok := connections[m.To]; ok {
-				err = conn.ws.WriteMessage(mt, []byte(m.Id+": "+m.Message))
-			}
+			err = send(m, c)
 			if err != nil {
 				log.Println("write:", err)
 				break
 			}
 		case "logout":
 			log.Println("logout")
+			if _, ok := connections[m.Id]; ok {
+				connections[m.Id].ws.Close()
+				delete(connections, m.Id)
+			}
+			log.Println("Logged out")
 
 		case "register":
 			log.Println("register")
@@ -155,7 +187,49 @@ func home(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func encrypt(key, text []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	b := base64.StdEncoding.EncodeToString(text)
+	ciphertext := make([]byte, aes.BlockSize+len(b))
+	iv := ciphertext[:aes.BlockSize]
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		return nil, err
+	}
+	cfb := cipher.NewCFBEncrypter(block, iv)
+	cfb.XORKeyStream(ciphertext[aes.BlockSize:], []byte(b))
+	return ciphertext, nil
+}
+
+func decrypt(key, text []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	if len(text) < aes.BlockSize {
+		return nil, errors.New("ciphertext too short")
+	}
+	iv := text[:aes.BlockSize]
+	text = text[aes.BlockSize:]
+	cfb := cipher.NewCFBDecrypter(block, iv)
+	cfb.XORKeyStream(text, text)
+	data, err := base64.StdEncoding.DecodeString(string(text))
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
 func main() {
+	/*
+		result, err := decrypt(key, ciphertext)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("%s\n", result)
+	*/
 	flag.Parse()
 	log.SetFlags(0)
 
@@ -164,6 +238,14 @@ func main() {
 			c.ws.Close()
 		}
 	}()
+
+	db, err := sql.Open("mysql",
+		"root@tcp(127.0.0.1:3306)/users")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer db.Close()
 
 	http.HandleFunc("/", home)
 	log.Fatal(http.ListenAndServe(*addr, nil))
