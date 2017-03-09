@@ -3,11 +3,11 @@
     <meta charset="utf-8">
     <script src="https://code.jquery.com/jquery-3.1.1.min.js"></script> 
     <script>
-    var exampleSocket = new WebSocket("ws://localhost:8080/echo");
+    var exampleSocket = new WebSocket("ws://localhost:8080/");
 
 exampleSocket.onmessage = function (event) {
     console.log(event.data);
-    	    $( "#test" ).append( "<p>Received: <strong>" + event.data + "</strong>" );
+    	    $( "#test" ).append( "<p><strong>" + event.data + "</strong>" );
 }
 
 
@@ -15,18 +15,29 @@ $( document ).ready(function() {
     $( "#send" ).on( "click", function() {
 	payload = JSON.stringify({
 	    Id: $("#username").val(),
+	    Type: "message",
 	    To: $("#recipient").val(),
 	    Message: $("#input").val()
 	})
 	exampleSocket.send(payload);
-	$( "#test" ).append( "<p>Sent: <strong>" + $("#input").val() + "</strong>" );
+	$( "#test" ).append( "<p>" + $("#username").val() + ": <strong>" + $("#input").val() + "</strong>" );
 	$("#input").val("");
     });
     $( "#register" ).on( "click", function() {
 	payload = JSON.stringify({
 	    Id: $("#username").val(),
-	    To: $("#recipient").val(),
-	    Message: "Registering",
+	    Type: "register",
+	    To: "",
+	    Message: $("#password").val(),
+	})
+	exampleSocket.send(payload);
+    });
+    $( "#login" ).on( "click", function() {
+	payload = JSON.stringify({
+	    Id: $("#username").val(),
+	    Type: "login",
+	    To: "",
+	    Message: $("#password").val(),
 	})
 	exampleSocket.send(payload);
     });
@@ -37,28 +48,26 @@ $( document ).ready(function() {
 <body>
   <table>
     <tr><td valign="top" width="50%">
-	<p>Click "Open" to create a connection to the server, 
-	  "Send" to send a message to the server and "Close" to close the connection. 
-	  You can change the message and send multiple times.
-	<p>
-	    <button id="open">Open</button>
-	    <button id="close">Close</button>
-	    <form id="username_form">
-	      <input id="username" type="text" value="tester">
-
-</form>
-    	    <form id="recipient_form">
-	      <input id="recipient" type="text" value="tester1">
-
-</form>
-    	      <button id="register">Register</button>
-    <form id="form">
-    <p><input id="input" type="text" value="Hello world!">
-    </form>
-	      <button id="send">Send</button>
+	<form id="login_form">
+	  <input id="username" type="text" value="tester">
+	  <input id="password" type="password" value="tester">
+	  
+	</form>
+    	<form id="recipient_form">
+	  <input id="recipient" type="text" value="tester1">
+	  
+	</form>
+	
+	<form id="form">
+	  <p><input id="input" type="text" value="Hello world!">
+	</form>
+	<button id="send">Send</button>
+    	<button id="login">Login</button>
+	<button id="logout">Logout</button>
+        <button id="register">Register</button>
       </td><td valign="top" width="50%">
-    <div id="output"></div>
-    <div id="test"></div>
+	<div id="output"></div>
+	<div id="test"></div>
   </td></tr></table>
 </body>
 </html>
